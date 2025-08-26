@@ -157,4 +157,30 @@ resource "aws_apprunner_service" "svc" {
   }
 }
 
+resource "aws_cloudwatch_metric_alarm" "apprunner_5xx" {
+  alarm_name          = "${var.app_name}-5xx"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 1
+  threshold           = 5
+  metric_name         = "HTTPCode_Target_5XX"
+  namespace           = "AWS/AppRunner"
+  period              = 60
+  statistic           = "Sum"
+  dimensions = { ServiceName = aws_apprunner_service.svc.service_name }
+  treat_missing_data  = "notBreaching"
+}
+
+resource "aws_cloudwatch_metric_alarm" "apprunner_latency" {
+  alarm_name          = "${var.app_name}-latency"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 2
+  threshold           = 500
+  metric_name         = "Latency"
+  namespace           = "AWS/AppRunner"
+  period              = 60
+  statistic           = "Average"
+  dimensions = { ServiceName = aws_apprunner_service.svc.service_name }
+  treat_missing_data  = "notBreaching"
+}
+
 
