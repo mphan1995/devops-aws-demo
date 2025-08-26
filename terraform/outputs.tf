@@ -9,3 +9,7 @@ output "apprunner_service_url" {
 output "github_actions_role_arn" {
   value = aws_iam_role.github_actions.arn
 }
+
+output "apprunner_service_arn" {
+  value = aws_apprunner_service.svc.arn
+}

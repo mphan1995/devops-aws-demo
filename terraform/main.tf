@@ -21,8 +21,8 @@ resource "aws_ecr_repository" "app" {
 }
 
 resource "aws_iam_openid_connect_provider" "github" {
-  url = "https://token.actions.githubusercontent.com"
-  client_id_list = ["sts.amazonaws.com"]
+  url             = "https://token.actions.githubusercontent.com"
+  client_id_list  = ["sts.amazonaws.com"]
   thumbprint_list = ["6938fd4d98bab03faadb97b34396831e3780aea1"]
 }
 
@@ -33,9 +33,9 @@ resource "aws_iam_role" "github_actions" {
     Version = "2012-10-17"
     Statement = [
       {
-        Effect = "Allow"
+        Effect    = "Allow"
         Principal = { Federated = aws_iam_openid_connect_provider.github.arn }
-        Action   = "sts:AssumeRoleWithWebIdentity"
+        Action    = "sts:AssumeRoleWithWebIdentity"
         Condition = {
           StringLike = {
             "token.actions.githubusercontent.com:sub" = "repo:${var.github_owner}/${var.github_repo}:*"
@@ -83,11 +83,55 @@ resource "aws_iam_role_policy" "github_actions_policy" {
   })
 }
 
+# Role để App Runner pull image từ ECR (private)
+resource "aws_iam_role" "apprunner_ecr_access_role" {
+  name = "${var.app_name}-apprunner-ecr-access"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Principal = {
+          Service = "build.apprunner.amazonaws.com"
+        }
+        Action = "sts:AssumeRole"
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy" "apprunner_ecr_access_policy" {
+  name = "${var.app_name}-apprunner-ecr-access-policy"
+  role = aws_iam_role.apprunner_ecr_access_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "ecr:GetAuthorizationToken",
+          "ecr:BatchGetImage",
+          "ecr:GetDownloadUrlForLayer",
+          "ecr:BatchCheckLayerAvailability"
+        ]
+        Resource = "*"
+      }
+    ]
+  })
+}
+
 resource "aws_apprunner_service" "svc" {
   service_name = var.app_name
 
   source_configuration {
     auto_deployments_enabled = true
+
+
+    authentication_configuration {
+      access_role_arn = aws_iam_role.apprunner_ecr_access_role.arn
+    }
 
     image_repository {
       image_repository_type = "ECR"
@@ -96,19 +140,21 @@ resource "aws_apprunner_service" "svc" {
       image_configuration {
         port = "8080"
         runtime_environment_variables = {
-          FLASK_ENV  = "production"
-          PORT       = "8080"
+          FLASK_ENV = "production"
+          PORT      = "8080"
         }
       }
     }
   }
 
   health_check_configuration {
-    protocol              = "HTTP"
-    path                  = "/health"
-    healthy_threshold     = 1
-    unhealthy_threshold   = 3
-    interval              = 5
-    timeout               = 2
+    protocol            = "HTTP"
+    path                = "/health"
+    healthy_threshold   = 1
+    unhealthy_threshold = 3
+    interval            = 5
+    timeout             = 2
   }
 }
+
+
