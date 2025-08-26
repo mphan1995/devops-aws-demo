@@ -42,8 +42,13 @@ jobs:
       - name: pip-audit (deps vuln)
         run: pip-audit -r requirements.txt || true
 
+      - name: Prepare PYTHONPATH
+        run: echo "PYTHONPATH=$GITHUB_WORKSPACE" >> $GITHUB_ENV
+
       - name: Run tests
-        run: pytest -q
+        run: python -m pytest -q
+
+
 
       - name: Trivy FS scan
         uses: aquasecurity/trivy-action@0.22.0
