@@ -1,15 +1,15 @@
 output "ecr_repo_url" {
-  value = aws_ecr_repository.app.repository_url
+  value = 507737351904.dkr.ecr.ap-southeast-1.amazonaws.com/devsecops-demo
 }
 
 output "apprunner_service_url" {
-  value = aws_apprunner_service.svc.service_url
+  value = epp74bjecz.ap-southeast-1.awsapprunner.com
 }
 
 output "github_actions_role_arn" {
-  value = aws_iam_role.github_actions.arn
+  value = arn:aws:iam::507737351904:role/devsecops-demo-github-actions-role
 }
 
 output "apprunner_service_arn" {
-  value = aws_apprunner_service.svc.arn
+  value = arn:aws:apprunner:ap-southeast-1:507737351904:service/devsecops-demo/23eb5226c8894e74ad68633ab6a863f0
 }
