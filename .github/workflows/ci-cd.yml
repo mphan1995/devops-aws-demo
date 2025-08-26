@@ -99,12 +99,51 @@ jobs:
           docker build -t $ECR_REPO:${{ env.IMAGE_TAG }} .
           docker push $ECR_REPO:${{ env.IMAGE_TAG }}
 
-      - name: Trigger App Runner deployment (optional)
+      - name: Trigger App Runner deployment (safe)
+        if: env.APP_RUNNER_SERVICE_ARN != ''
         env:
           SERVICE_ARN: ${{ secrets.APP_RUNNER_SERVICE_ARN }}
+          AWS_REGION: ${{ env.AWS_REGION }}
         run: |
-          if [ -n "$SERVICE_ARN" ]; then
-            aws apprunner start-deployment --service-arn "$SERVICE_ARN"
-          else
-            echo "Auto-deploy is enabled; skipping explicit start."
+          set -euo pipefail
+          get_status() {
+            aws apprunner describe-service --service-arn "$SERVICE_ARN" --region "$AWS_REGION" \
+              --query 'Service.Status' --output text
+          }
+
+          status=$(get_status)
+          echo "Current status = $status"
+
+          # Nếu đang PAUSED thì resume trước
+          if [ "$status" = "PAUSED" ]; then
+            echo "Resuming service..."
+            aws apprunner resume-service --service-arn "$SERVICE_ARN" --region "$AWS_REGION"
+            # chờ tới khi RUNNING
+            for i in {1..30}; do
+              sleep 10
+              status=$(get_status)
+              echo "Status after resume: $status"
+              [ "$status" = "RUNNING" ] && break
+            done
           fi
+
+          # Nếu đang bận thì bỏ qua (App Runner tự deploy khi image mới)
+          if [ "$status" = "OPERATION_IN_PROGRESS" ]; then
+            echo "Service busy (OPERATION_IN_PROGRESS). Skipping explicit start."
+            exit 0
+          fi
+
+          # CREATE_FAILED: nên kiểm tra lại image/tag hoặc chờ service về RUNNING rồi mới start
+          if [ "$status" = "CREATE_FAILED" ]; then
+            echo "Service in CREATE_FAILED. Skip start; check Events & ensure ECR :latest exists."
+            exit 0
+          fi
+
+          # Chỉ chạy khi RUNNING
+          if [ "$status" = "RUNNING" ]; then
+            echo "Starting deployment..."
+            aws apprunner start-deployment --service-arn "$SERVICE_ARN" --region "$AWS_REGION"
+          else
+            echo "Service not RUNNING (status=$status). Skipping start."
+          fi
+
