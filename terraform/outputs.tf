@@ -3,7 +3,7 @@ output "ecr_repo_url" {
 }
 
 output "apprunner_service_url" {
-  value = "epp74bjecz.ap-southeast-1.awsapprunner.com"
+  value = "grtgntca2w.ap-southeast-1.awsapprunner.com"
 }
 
 output "github_actions_role_arn" {
