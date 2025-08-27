@@ -1,0 +1,194 @@
+# ================================
+# SonarQube Makefile for WSL (Ubuntu/Debian)
+# Tác giả: bạn ChatGPT của bạn :)
+# ================================
+
+SHELL := /bin/bash
+
+# ======= Cấu hình có thể đổi =======
+# Nếu file zip nằm cùng thư mục Makefile: để SONAR_ZIP mặc định.
+# Nếu ở nơi khác => make unzip SONAR_ZIP=/path/to/sonarqube-<ver>.zip
+SONAR_VERSION ?= 25.8.0.112029
+SONAR_ZIP ?= sonarqube-$(SONAR_VERSION).zip
+
+# Thư mục cài đặt bản zip trong WSL
+SONAR_HOME ?= $(HOME)/sonarqube
+SONAR_DIR  ?= $(SONAR_HOME)/sonarqube-$(SONAR_VERSION)
+SONAR_BIN  ?= $(SONAR_DIR)/bin/linux-x86-64/sonar.sh
+SONAR_LOG  ?= $(SONAR_DIR)/logs/sonar.log
+
+# JDBC (nếu dùng Postgres qua Docker Compose)
+PG_USER ?= sonar
+PG_PASS ?= sonarpass
+PG_DB   ?= sonarqube
+PG_TAG  ?= 16
+
+# ======= Helpers =======
+.PHONY: help \
+        install-java check-java set-sysctl \
+        unzip start stop restart status logs url \
+        docker-init docker-up docker-down docker-logs docker-status docker-clean \
+        props clean
+
+default: help
+
+help:
+	@echo ""
+	@echo "SonarQube Automation (WSL)"
+	@echo "========================================"
+	@echo "Zip mode:"
+	@echo "  make install-java        # Cài OpenJDK 17"
+	@echo "  make check-java          # Kiểm tra Java 17"
+	@echo "  make set-sysctl          # Thiết lập vm.max_map_count cho ES"
+	@echo "  make unzip               # Giải nén $(SONAR_ZIP) vào $(SONAR_HOME)"
+	@echo "  make start               # Start SonarQube (zip)"
+	@echo "  make status              # Trạng thái dịch vụ"
+	@echo "  make logs                # Theo dõi logs"
+	@echo "  make stop                # Stop SonarQube"
+	@echo "  make restart             # Restart"
+	@echo "  make url                 # In URL đăng nhập"
+	@echo ""
+	@echo "Docker mode:"
+	@echo "  make docker-init         # Tạo docker-compose.yml (Sonar + Postgres)"
+	@echo "  make docker-up           # docker compose up -d"
+	@echo "  make docker-status       # Kiểm tra container"
+	@echo "  make docker-logs         # Theo dõi logs"
+	@echo "  make docker-down         # Dừng & gỡ containers"
+	@echo "  make docker-clean        # Xoá volumes (mất dữ liệu)"
+	@echo ""
+	@echo "Khác:"
+	@echo "  make props               # Tạo file sonar-project.properties mẫu"
+	@echo "  make clean               # Xoá bản zip đã giải nén (không đụng Docker volumes)"
+	@echo ""
+
+# ======= ZIP MODE =======
+install-java:
+	sudo apt update
+	sudo apt install -y openjdk-17-jdk
+
+check-java:
+	@command -v java >/dev/null 2>&1 || { echo "Java chưa cài. Chạy: make install-java"; exit 1; }
+	@java -version
+
+set-sysctl:
+	sudo sysctl -w vm.max_map_count=262144
+	@grep -q "vm.max_map_count=262144" /etc/sysctl.conf || echo "vm.max_map_count=262144" | sudo tee -a /etc/sysctl.conf >/dev/null
+
+unzip:
+	@test -f "$(SONAR_ZIP)" || { echo "Không thấy file $(SONAR_ZIP). Dùng: make unzip SONAR_ZIP=/path/to/sonarqube-<ver>.zip"; exit 1; }
+	mkdir -p "$(SONAR_HOME)"
+	unzip -o "$(SONAR_ZIP)" -d "$(SONAR_HOME)"
+	@echo "Đã giải nén vào: $(SONAR_DIR)"
+
+start: check-java set-sysctl
+	@test -x "$(SONAR_BIN)" || { echo "Không tìm thấy $(SONAR_BIN). Hãy chạy: make unzip"; exit 1; }
+	"$(SONAR_BIN)" start
+	@echo "Đang khởi động... xem logs: make logs"
+	@$(MAKE) -s url
+
+stop:
+	@test -x "$(SONAR_BIN)" || { echo "Không tìm thấy $(SONAR_BIN)."; exit 0; }
+	"$(SONAR_BIN)" stop || true
+
+restart:
+	@$(MAKE) -s stop
+	@$(MAKE) -s start
+
+status:
+	@test -x "$(SONAR_BIN)" || { echo "Không tìm thấy $(SONAR_BIN). Hãy chạy: make unzip"; exit 1; }
+	"$(SONAR_BIN)" status || true
+
+logs:
+	@test -f "$(SONAR_LOG)" || { echo "Chưa có log: $(SONAR_LOG). Hãy start trước."; exit 1; }
+	tail -f "$(SONAR_LOG)"
+
+url:
+	@echo "Mở: http://localhost:9000  (user/pass: admin / admin)"
+
+# ======= DOCKER MODE =======
+docker-init:
+	@echo "Tạo docker-compose.yml..."
+	@mkdir -p "$(SONAR_HOME)"
+	@cat > "$(SONAR_HOME)/docker-compose.yml" <<'YAML'
+version: "3.8"
+services:
+  db:
+    image: postgres:16
+    container_name: sonardb
+    environment:
+      - POSTGRES_USER=$(PG_USER)
+      - POSTGRES_PASSWORD=$(PG_PASS)
+      - POSTGRES_DB=$(PG_DB)
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $(PG_USER) -d $(PG_DB)"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  sonarqube:
+    image: sonarqube:community
+    container_name: sonarqube
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "9000:9000"
+    environment:
+      - SONAR_JDBC_URL=jdbc:postgresql://db:5432/$(PG_DB)
+      - SONAR_JDBC_USERNAME=$(PG_USER)
+      - SONAR_JDBC_PASSWORD=$(PG_PASS)
+      - SONAR_ES_BOOTSTRAP_CHECKS_DISABLE=true
+    volumes:
+      - sonarqube_data:/opt/sonarqube/data
+      - sonarqube_logs:/opt/sonarqube/logs
+      - sonarqube_extensions:/opt/sonarqube/extensions
+
+volumes:
+  sonarqube_data:
+  sonarqube_logs:
+  sonarqube_extensions:
+  pg_data:
+YAML
+	@echo "Đã tạo: $(SONAR_HOME)/docker-compose.yml"
+	@echo "Chạy tiếp: make docker-up"
+
+docker-up:
+	@test -f "$(SONAR_HOME)/docker-compose.yml" || { echo "Chưa có docker-compose.yml. Chạy: make docker-init"; exit 1; }
+	cd "$(SONAR_HOME)" && docker compose up -d
+	@$(MAKE) -s url
+
+docker-status:
+	docker ps --filter "name=sonar"
+
+docker-logs:
+	@test -f "$(SONAR_HOME)/docker-compose.yml" || { echo "Chưa có docker-compose.yml. Chạy: make docker-init"; exit 1; }
+	cd "$(SONAR_HOME)" && docker compose logs -f
+
+docker-down:
+	@test -f "$(SONAR_HOME)/docker-compose.yml" || { echo "Chưa có docker-compose.yml. Chạy: make docker-init"; exit 1; }
+	cd "$(SONAR_HOME)" && docker compose down
+
+docker-clean:
+	@test -f "$(SONAR_HOME)/docker-compose.yml" || { echo "Chưa có docker-compose.yml. Chạy: make docker-init"; exit 1; }
+	cd "$(SONAR_HOME)" && docker compose down -v
+
+# ======= Tiện ích khác =======
+props:
+	@test -f sonar-project.properties || echo "\
+sonar.projectKey=myapp\n\
+sonar.projectName=My App\n\
+sonar.projectVersion=1.0\n\
+sonar.sources=src\n\
+sonar.tests=tests\n\
+sonar.sourceEncoding=UTF-8\n\
+# Ví dụ cho JS/TS:\n\
+# sonar.javascript.lcov.reportPaths=coverage/lcov.info\n\
+# Ví dụ cho Java:\n\
+# sonar.java.binaries=build/classes\n" > sonar-project.properties
+	@echo "Đã tạo (hoặc đã tồn tại) sonar-project.properties"
+
+clean:
+	@test -d "$(SONAR_DIR)" && rm -rf "$(SONAR_DIR)" || true
+	@echo "Đã xoá thư mục: $(SONAR_DIR) (Docker volumes không bị ảnh hưởng)"
