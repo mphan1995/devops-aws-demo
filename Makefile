@@ -26,8 +26,13 @@ sonar-wait:
 
 sonar-scan:
 	@if [ -z "$$SONAR_TOKEN" ]; then echo "Export SONAR_TOKEN first"; exit 2; fi
-	docker run --rm -e SONAR_HOST_URL=$(SONAR_HOST_URL) -e SONAR_TOKEN=$$SONAR_TOKEN \
-	  -v $(PWD):/usr/src sonarsource/sonar-scanner-cli
+	docker run --rm \
+	  --network sonar_default \
+	  -e SONAR_HOST_URL=http://sonarqube:9000 \
+	  -e SONAR_TOKEN=$$SONAR_TOKEN \
+	  -v $(PWD):/usr/src \
+	  sonarsource/sonar-scanner-cli
+
 
 sonar-down:
 	docker compose -f sonar/docker-compose.yml down -v
