@@ -1,6 +1,6 @@
 .PHONY: gitleaks bandit test sonar-up sonar-wait sonar-scan sonar-down check all
 SONAR_HOST_URL ?= http://sonarqube:9000
-SONAR_TOKEN=15f9206eb54959355540b2624c4adab71fe9e0f6
+SONAR_TOKEN=squ_4acbb4ee99b723b3c7d8cce65ca2c6f6516f1e48
 gitleaks:
 	docker run --rm -v $(PWD):/repo zricethezav/gitleaks:latest \
 	  detect --source=/repo --config=/repo/.gitleaks.toml --verbose --redact
