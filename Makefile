@@ -1,5 +1,5 @@
 .PHONY: gitleaks bandit test sonar-up sonar-wait sonar-scan sonar-down check all
-SONAR_HOST_URL ?= http://sonarqube:9000
+SONAR_HOST_URL ?= http://localhost:9000
 
 gitleaks:
 	docker run --rm -v $(PWD):/repo zricethezav/gitleaks:latest \
