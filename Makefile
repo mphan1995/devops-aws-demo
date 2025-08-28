@@ -1,12 +1,5 @@
 .PHONY: gitleaks bandit test sonar-up sonar-wait sonar-scan sonar-down check all
-SONAR_HOST_URL ?= http://localhost:9000
-SONAR_TOKEN=sqa_c500d46de55d161a5a83d1f04e336bc8f654162c
-
-# a) Đếm đúng số byte, KHÔNG tính newline
-printf '%s' "$SONAR_TOKEN" | wc -c
-
-# b) Kiểm tra có dính \r (CR từ Windows clipboard) không
-printf '%q\n' "$SONAR_TOKEN" | grep -q '\\r' && echo "CRLF DETECTED"
+SONAR_HOST_URL ?= http://sonarqube:9000
 
 gitleaks:
 	docker run --rm -v $(PWD):/repo zricethezav/gitleaks:latest \
@@ -35,7 +28,7 @@ sonar-scan:
 	@if [ -z "$$SONAR_TOKEN" ]; then echo "Export SONAR_TOKEN first"; exit 2; fi
 	docker run --rm \
 	  --network sonar_default \
-	  -e SONAR_HOST_URL=$(SONAR_HOST_URL) \
+	  -e SONAR_HOST_URL=http://sonarqube:9000 \
 	  -e SONAR_TOKEN=$$SONAR_TOKEN \
 	  -v $(PWD):/usr/src \
 	  sonarsource/sonar-scanner-cli
