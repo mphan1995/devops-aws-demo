@@ -1,6 +1,6 @@
 .PHONY: gitleaks bandit test sonar-up sonar-wait sonar-scan sonar-down check all
 SONAR_HOST_URL ?= http://localhost:9000
-SONAR_TOKEN=squ_4acbb4ee99b723b3c7d8cce65ca2c6f6516f1e48
+SONAR_TOKEN=sqa_c500d46de55d161a5a83d1f04e336bc8f654162c
 
 # a) Đếm đúng số byte, KHÔNG tính newline
 printf '%s' "$SONAR_TOKEN" | wc -c
